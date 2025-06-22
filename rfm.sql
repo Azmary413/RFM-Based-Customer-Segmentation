@@ -1,0 +1,84 @@
+-- ✅ Check for Anomalies in Sales or Quantity
+SELECT * 
+FROM `azmary.Sales_data.sales` 
+WHERE SALES < 0 OR QUANTITYORDERED < 0; 
+-- No anomalies found
+
+-- ✅ Find Most Recent Order Date
+SELECT MAX(ORDERDATE) 
+FROM `azmary.Sales_data.sales`; 
+-- Result: 2005-05-31
+
+-- ✅ Create View for RFM Segmentation
+CREATE VIEW `azmary.Sales_data.segmentation` AS 
+WITH RFM_VALUES AS (
+    SELECT
+        CUSTOMERNAME,
+        DATE_DIFF((SELECT MAX(ORDERDATE) FROM `azmary.Sales_data.sales`), MAX(ORDERDATE), DAY) AS RECENCY_VALUE_IN_DAYS,
+        COUNT(DISTINCT ORDERNUMBER) AS FREQUENCY_VALUE,
+        ROUND(SUM(SALES), 0) AS MONETARY_VALUE
+    FROM `azmary.Sales_data.sales`
+    GROUP BY CUSTOMERNAME
+),
+
+RFM_SCORE AS (
+    SELECT
+        RV.*,
+        NTILE(5) OVER (ORDER BY RECENCY_VALUE_IN_DAYS DESC) AS R_SCORE,
+        NTILE(5) OVER (ORDER BY FREQUENCY_VALUE ASC) AS F_SCORE,
+        NTILE(5) OVER (ORDER BY MONETARY_VALUE ASC) AS M_SCORE
+    FROM RFM_VALUES RV
+),
+
+RFM_COMBINATION AS (
+    SELECT
+        CUSTOMERNAME,
+        RECENCY_VALUE_IN_DAYS, 
+        R_SCORE,
+        FREQUENCY_VALUE, 
+        F_SCORE,
+        MONETARY_VALUE, 
+        M_SCORE,
+        (R_SCORE + F_SCORE + M_SCORE) AS TOTAL_RFM_SCORE,
+        CONCAT(R_SCORE, F_SCORE, M_SCORE) AS RFM_COMBINATION
+    FROM RFM_SCORE
+)
+
+SELECT
+    RC.*,
+    CASE
+        WHEN RFM_COMBINATION IN ('455', '542', '544', '552', '553', '452', '545', '554', '555') THEN 'Champions'
+        WHEN RFM_COMBINATION IN ('344', '345', '353', '354', '355', '443', '451', '342', '351', '352', '441', '442', '444', '445', '453', '454','541', '543', '515', '551') THEN 'Loyal Customers'
+        WHEN RFM_COMBINATION IN ('513', '413', '511', '411', '512', '341', '412', '343', '514') THEN 'Potential Loyalists'
+        WHEN RFM_COMBINATION IN ('414', '415', '214', '211', '212', '213', '241', '251', '312', '314', '311', '313', '315', '243', '245', '252', '253', '255', '242', '244', '254') THEN 'Promising Customers'
+        WHEN RFM_COMBINATION IN ('141', '142', '143', '144', '151', '152', '155', '145', '215') THEN 'Needs Attention'
+        WHEN RFM_COMBINATION IN ('113', '111', '112', '114', '115') THEN 'About to Sleep'
+        ELSE 'Other'
+    END AS CUSTOMER_SEGMENT
+FROM RFM_COMBINATION RC;
+
+
+-- Analysis Queries
+-- Segment-Level Overview
+SELECT
+    CUSTOMER_SEGMENT,
+    COUNT(*) AS NUMBER_OF_CUSTOMERS,
+    ROUND(AVG(RECENCY_VALUE_IN_DAYS), 1) AS AVERAGE_DAYS_OF_LAST_ACTIVITY,
+    SUM(FREQUENCY_VALUE) AS TOTAL_ORDERS,
+    ROUND(AVG(FREQUENCY_VALUE), 1) AS AVERAGE_NUMBER_OF_ORDERS,
+    ROUND(SUM(MONETARY_VALUE), 0) AS TOTAL_ORDER_VALUE,
+    ROUND(AVG(MONETARY_VALUE), 1) AS AVERAGE_ORDER_VALUE
+FROM `azmary.Sales_data.segmentation`
+GROUP BY CUSTOMER_SEGMENT;
+
+
+-- Segment-Wise Quantity & Sales
+SELECT 
+    CUSTOMER_SEGMENT,
+    SUM(QUANTITYORDERED) AS TOTAL_QUANTITY_ORDERED,
+    ROUND(SUM(SALES), 0) AS TOTAL_SALES_AMOUNT
+FROM `azmary.Sales_data.sales` AS S
+LEFT JOIN `azmary.Sales_data.segmentation` AS R 
+    ON S.CUSTOMERNAME = R.CUSTOMERNAME
+GROUP BY CUSTOMER_SEGMENT
+ORDER BY TOTAL_QUANTITY_ORDERED DESC;
