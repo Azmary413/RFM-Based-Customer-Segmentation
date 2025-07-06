@@ -123,3 +123,4 @@ Customers are grouped using combined RFM scores (`RFM_COMBINATION`) into defined
 * **Loyal customers** are valuable for **long-term growth**.
 * **"About to Sleep"** and **"Needs Attention"** are early warning flags for **churn**.
 * Custom strategies must be tailored for each customer type to optimize results.
+  
